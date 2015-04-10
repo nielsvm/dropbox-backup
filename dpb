@@ -1,3 +1,99 @@
 #!/usr/bin/python2
+import platform, os, sys, tarfile, urllib, shutil, time
+from subprocess import call
 
-print "test"
+# Import lib/dropbox.py, and make sure its GUI_AVAILABLE stays False.
+os.environ['DISPLAY'] = ''
+from lib import dropbox as db
+
+# Script variables.
+TMP = '/tmp'
+HOME = os.path.expanduser("~")
+DIST = '%s/dropbox-dist' % TMP
+SCRIPTDIR = os.path.dirname(os.path.realpath(__file__))
+DROPBOXPATH = os.path.expanduser('~/.dropbox')
+DROPBOXMOUNT = os.path.expanduser('~/Dropbox')
+
+def initialize():
+    u"""Installs Dropbox in /tmp and initializes ~/.dropbox, ~/Dropbox."""
+    if not os.path.exists(DIST):
+        tgzpath = '%s/dropbox-dist.tar.gz' % TMP
+        if not os.path.exists(tgzpath):
+            url = db.DOWNLOAD_LOCATION_FMT % db.plat()
+            urllib.urlretrieve(url, tgzpath)
+        tar = tarfile.open(tgzpath)
+        tar.extractall(TMP)
+        tar.close()
+        os.remove(tgzpath)
+        os.rename('/tmp/.dropbox-dist', DIST)
+    if not os.path.exists('%s/.dropbox-dist' % HOME):
+        os.symlink(DIST, '%s/.dropbox-dist' % HOME)
+    if not os.path.exists(db.DROPBOXD_PATH):
+        raise Exception("Cannot find %s after attempted installation!" % db.DROPBOXD_PATH)
+        sys.exit()
+    if not os.path.exists(DROPBOXPATH):
+        if db.is_dropbox_running():
+            db.stop([])
+            time.sleep(2)
+            shutil.rmtree(DROPBOXPATH)
+        print("INITIALIZING - press CTRL+C when done!\n")
+        try:
+            call([db.DROPBOXD_PATH])
+        except KeyboardInterrupt:
+            pass
+
+@db.command
+def uninstall(argv):
+    u"""Removes all traces of the dropbox distribution.
+dropbox uninstall
+
+Removes all traces of the dropbox distribution.
+"""
+    if os.path.exists(DIST):
+        shutil.rmtree(DIST)
+    if os.path.exists('%s/.dropbox-dist' % HOME):
+        os.remove('%s/.dropbox-dist' % HOME)
+    if os.path.exists(db.DROPBOXD_PATH):
+        raise Exception("Uninstalling failed as %s still exists!" % db.DROPBOXD_PATH)
+        sys.exit()
+
+@db.command
+def sync(argv):
+    u"""Syncs the newest changes with dropbox and quits the daemon.
+dropbox sync
+
+Syncs the newest changes with dropbox and quits the daemon.
+"""
+    safety_sleep = 1
+    initialize()
+    if not db.is_dropbox_running():
+        db.start_dropbox()
+        time.sleep(safety_sleep)
+    while db.is_dropbox_running():
+        try:
+            with db.closing(db.DropboxCommand()) as dc:
+                try:
+                    status = dc.get_dropbox_status()[u'status']
+                    if u'Up to date' in status:
+                        try:
+                            dc.tray_action_hard_exit()
+                        except db.DropboxCommand.BadConnectionError, e:
+                            time.sleep(safety_sleep)
+                        except db.DropboxCommand.EOFError:
+                            time.sleep(safety_sleep)
+                    else:
+                        for i in status:
+                            print(i)
+                except (KeyError, db.DropboxCommand.CommandError,
+                    db.DropboxCommand.BadConnectionError, db.DropboxCommand.EOFError):
+                    time.sleep(safety_sleep)
+        except db.DropboxCommand.CouldntConnectError, e:
+            time.sleep(safety_sleep)
+        time.sleep(safety_sleep)
+    print("Sync done")
+
+if __name__ == "__main__":
+    initialize()
+    ret = db.main(sys.argv)
+    if ret is not None:
+        sys.exit(ret)
