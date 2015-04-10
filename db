@@ -1,5 +1,5 @@
 #!/usr/bin/python2
-import platform, os, sys, tarfile, urllib, shutil, time
+import platform, os, sys, tarfile, urllib, shutil, time, datetime
 from subprocess import call
 
 # Import lib/dropbox.py, and make sure its GUI_AVAILABLE stays False.
@@ -114,6 +114,9 @@ dropbox backup DESTINATION_PATH
         DROPBOXMOUNT + '/',
         destination
     ])
+    with open('%s/BACKUP_LAST_RUN.txt' % destination, 'w') as log:
+        log.write("%s\n" % datetime.datetime.now())
+        log.close()
 
 if __name__ == "__main__":
     initialize()
