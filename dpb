@@ -43,7 +43,7 @@ def initialize():
             pass
 
 @db.command
-def uninstall(argv):
+def uninstall(args):
     u"""Removes all traces of the dropbox distribution.
 dropbox uninstall
 
@@ -58,14 +58,14 @@ Removes all traces of the dropbox distribution.
         sys.exit()
 
 @db.command
-def sync(argv):
+def sync(args):
     u"""Syncs the newest changes with dropbox and quits the daemon.
 dropbox sync
 
 Syncs the newest changes with dropbox and quits the daemon.
 """
-    safety_sleep = 1
     initialize()
+    safety_sleep = 1
     if not db.is_dropbox_running():
         db.start_dropbox()
         time.sleep(safety_sleep)
@@ -91,6 +91,29 @@ Syncs the newest changes with dropbox and quits the daemon.
             time.sleep(safety_sleep)
         time.sleep(safety_sleep)
     print("Sync done")
+
+@db.command
+def backup(args):
+    u"""Syncs ~/Dropbox and rsyncs changes to DESTINATION_PATH.
+dropbox backup DESTINATION_PATH
+"""
+    if len(args) != 1:
+        db.console_print(backup.__doc__, linebreak=False)
+        return
+    sync([])
+    destination = args[0]
+    if not os.path.exists(destination):
+        os.makedirs(destination)
+        print("Directory %s created" % destination)
+    call([
+        'rsync',
+        '-zvra',
+        '--exclude=.dropbo*',
+        '--delete',
+        '--delete-excluded',
+        DROPBOXMOUNT + '/',
+        destination
+    ])
 
 if __name__ == "__main__":
     initialize()
